@@ -64,18 +64,22 @@ class Initializer:
 
         parse_obj = argparse.ArgumentParser()
 
-        parse_obj.add_argument('-dssp_path', help='Required absolute path to xssp executable', type=str)
+        parse_obj.add_argument('-dssp_path',
+                               default="libraries/xssp/mkdssp",
+                               type=str,
+                               help='Required absolute path to xssp executable')
 
         parse_obj.add_argument('-configuration',
                                default=os.path.join(os.getcwd(), 'configuration', 'parameters.json'),
                                type=str,
                                help='Optional file with algorithm parameters to use')
 
-        parse_obj.add_argument('-out_dir', default=os.path.join(os.getcwd(), 'results'),
+        parse_obj.add_argument('-out_dir',
+                               default=os.path.join(os.getcwd(), 'results'),
                                type=str,
                                help='Optional output folder (default to results/')
 
-        parse_obj.add_argument('pdbfile', help='Input pdb file name (not path)', type=str)
+        parse_obj.add_argument('pdbfile', type=str, help='Input pdb file name (not path)')
 
         return parse_obj
 
