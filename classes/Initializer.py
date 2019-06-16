@@ -67,7 +67,7 @@ class Initializer:
         parse_obj.add_argument('-dssp_path', help='Required absolute path to xssp executable', type=str)
 
         parse_obj.add_argument('-configuration',
-                               default=os.path.join(os.getcwd(), 'configuration', 'parameters.ini'),
+                               default=os.path.join(os.getcwd(), 'configuration', 'parameters.json'),
                                type=str,
                                help='Optional file with algorithm parameters to use')
 
