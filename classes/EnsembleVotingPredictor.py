@@ -73,16 +73,6 @@ class EnsembleVotingPredictor:
         """
         self.__builder.random_forest_clf(self.__x_train, self.__y_train, param)
 
-    def add_extra_tree(self, param: Dict) -> None:
-        """
-        Train a random forest classifier and adds the best model to the ensemble predictor
-
-        :param x: training examples
-        :param y: training labels
-        :param param: grid search parameters to select best model
-        """
-        self.__builder.extra_tree_clf(self.__x_train, self.__y_train, param)
-
     def add_logistic_classifier(self, param: Dict) -> None:
         """
         Train a logistic classifier and adds the best model to the ensemble predictor
