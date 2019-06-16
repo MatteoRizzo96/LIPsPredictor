@@ -53,8 +53,7 @@ Project report for the Structural Bioinformatics course AY 2018/2019. The assign
 			- [Custom features](#custom-features)
 		- [Features selection](#features-selection)
 			- [Public methods description](#public-methods-description)
-		- [Model (predictor)](#model-predictor)
-			- [EnsembleVotingPredictor](#ensemblevotingpredictor)
+		- [EnsembleVotingPredictor](#ensemble-voting-predictor)
 			- [Public methods description](#public-methods-description)
 		- [Input example](#input-example)
 			- [Public methods description](#public-methods-description)
@@ -345,7 +344,7 @@ The predictions of each model are then combined together using ensemble learning
 
 In order to retrain the models, you first need to set the required parameters in the ```configuration/parameters.json``` file (please refer to [Parameters configuration](#parameters-configuration) for more information about the parameters to be configured).
 
-As explained previously, Random Forest performed better than the other two, so we didn't use the others in order to achieve our results and we don't recommend doing so, but we left the possibility to freely select the models to be run in the session parameters.
+As explained previously, Random Forest performed better than the other two, so we didn't use the others in order to achieve our results and we don't recommend doing so, but we left the possibility to freely select the models to be run in the session parameters. In the repository we provide a pre-trained model that can be used for evaluation. The model is saved in `configuration/voting_clf.joblib`. Json file is already configured to use this model instead of training a new one.
 
 ### Predicting
 
