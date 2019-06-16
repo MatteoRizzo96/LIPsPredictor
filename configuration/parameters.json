@@ -1,0 +1,73 @@
+{
+  "dataset": {
+    "rewrite": false,
+    "use_ring_api": false,
+    "delete_entities": false,
+    "delete_edges": false,
+    "balance_ratio": 40
+  },
+  "data_processing": {
+    "show_best_features": false,
+    "num_features": 5,
+    "sw_width": 3
+  },
+  "session": {
+    "load_clf": true,
+    "dump_clf": true,
+    "delete_previous_input": true,
+    "svm": false,
+    "forest": true,
+    "logistic": false
+  },
+  "forest": {
+    "grid": {
+      "n_estimators": [100, 500, 1000],
+      "max_features": ["auto", "sqrt"],
+      "bootstrap": [true, false],
+      "criterion": ["gini", "entropy"],
+      "max_depth": [90, 70, 10, 5, 2, "None"],
+      "min_samples_leaf": [1, 2, 4, 9, 10],
+      "min_samples_split": [2, 5, 10]
+    },
+    "params": {
+      "n_estimators": 500,
+      "min_samples_split": 5,
+      "min_samples_leaf": 2,
+      "max_features": "auto",
+      "max_depth": "None",
+      "criterion": "gini",
+      "bootstrap": true
+    },
+    "k_folds": 10,
+    "grid_train": false
+  },
+  "svm": {
+    "grid": {
+      "ker__degree": [1, 2],
+      "clf__kernel": ["linear", "rbf"],
+      "clf__gamma": [0.01, 0.1],
+      "clf__C": [1.0, 4.0]
+    },
+    "params": {
+      "ker__degree": 2,
+      "clf__kernel": "rbf",
+      "clf__gamma": 0.01,
+      "clf__C": 4.0
+    },
+    "k_folds": 10,
+    "grid_train": false
+  },
+  "logistic": {
+    "grid": {
+      "C": [0.01, 0.5, 1.0, 2.0, 2.5, 3.0, 5.0],
+      "penalty": ["none", "l2"],
+      "max_iter": [1000]
+    },
+    "params": {
+      "penalty": "none",
+      "max_iter": 1000
+    },
+    "k_folds": 10,
+    "grid_train": false
+  }
+}

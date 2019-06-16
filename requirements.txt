@@ -1,0 +1,10 @@
+numpy
+pandas
+biopython
+matplotlib
+requests
+sklearn
+typing
+biopython
+tabulate
+joblib
