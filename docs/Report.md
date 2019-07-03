@@ -57,7 +57,7 @@ Project report for the Structural Bioinformatics course AY 2018/2019. The assign
 			- [Public methods description](#public-methods-description)
 		- [Input example](#input-example)
 			- [Public methods description](#public-methods-description)
-	- [**Observations and results**](#observations-and-results-(update-03/07/2019))
+	- [**Observations and results (update 03/07/2019)**](#observations-and-results-update-03072019)
 
 <!-- /TOC -->
 
