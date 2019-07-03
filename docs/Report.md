@@ -57,7 +57,7 @@ Project report for the Structural Bioinformatics course AY 2018/2019. The assign
 			- [Public methods description](#public-methods-description)
 		- [Input example](#input-example)
 			- [Public methods description](#public-methods-description)
-	- [**Observations and results**](#observations-and-results)
+	- [**Observations and results**](#observations-and-results-(update-03/07/2019))
 
 <!-- /TOC -->
 
@@ -840,7 +840,7 @@ Given some ```DataFrame``` of features, set this ```DataFrame``` as the new set 
 | -------------- | ------------ | ---------------------------------------- |
 | ```features``` | pd.DataFrame | The new set of features for the dataset. |
 
-## **Observations and results **(update 03/07/2019)
+## Observations and results (update 03/07/2019)
 
 After the test on a totally unknown dataset we observed bad results in terms of metrics. The main reason for this behavior of the software was a wrong formatting of the output file, and a wrong parsing of the input file which didn't consider the possibility that the same chain had more than one LIP sequence. However, while looking for the error, we also implemented some new features:
 
@@ -871,9 +871,9 @@ For many proteins, it seems like many LIP regions have a specular non LIP counte
 
 ### 1h8b 
 
-![1h8b](/home/matteo/Github/LIPsPredictor/docs/1h8b.png)
+![1h8b](1h8b.png)
 
 ### 4yoz 
 
-![4yoz](/home/matteo/Github/LIPsPredictor/docs/4yoz.png)
+![4yoz](4yoz.png)
 
