@@ -1,4 +1,5 @@
 from typing import List
+
 from functions.sliding_window import sliding_window
 
 
@@ -27,12 +28,15 @@ def structural_linearity(entries: List, inter_sc_col: int, intra_col: int, intra
 
     struct_lin = []
     chunks = sliding_window(features, 11, padding=True, padding_el=[0, 0, 0])
+
     for blob in chunks:
         intra_total, inter_total, intra_long_total = 0, 0, 0
+
         for res in blob:
             intra_total += res[0]
             intra_long_total += res[1]
             inter_total += res[2]
+
         # Final +1 avoids dividing by 0)
         blob_sl = inter_total / ((intra_total + intra_long_total * 4.0) + 1)
         struct_lin.append(blob_sl)

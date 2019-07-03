@@ -1,11 +1,6 @@
-from pprint import pprint
-from typing import List, Iterable, Any
 from collections import deque
 from itertools import repeat
-
-from Bio.PDB import PDBParser
-
-from functions import inline_distance
+from typing import List, Iterable, Any
 
 
 def sliding_window(sequence: List, window_size: int, padding: bool = True, padding_el: Any = None) \
@@ -17,10 +12,11 @@ def sliding_window(sequence: List, window_size: int, padding: bool = True, paddi
     :param padding: if True the function will return as many chunks as the elements in sequence.
         If false function will return len(sequence)-windows_size + 1 chunks
     :param sequence: list of values
-    :param window_size: the size of the sliding window. If this size is greater than sequence lenght,
-        window_size is adjusted to match sequence lenght.
+    :param window_size: the size of the sliding window. If this size is greater than sequence length,
+        window_size is adjusted to match sequence length.
     :return: generator of chunks of sequence
     """
+
     # Verify the inputs
     assert isinstance(sequence, List), "ERROR sequence must be a list."
     assert isinstance(window_size,
@@ -51,30 +47,6 @@ def sliding_window(sequence: List, window_size: int, padding: bool = True, paddi
         sequence.extendleft(repeat(padding_el, left_padding))
         sequence.extend(repeat(padding_el, right_padding))
 
-        # print(sequence)
-
     # Return a generator
     for i in range(0, num_chunks, 1):
         yield list(sequence)[i:i + window_size]
-
-
-# To test
-if __name__ == '__main__':
-
-    a = [1, 2, 5, 6, 7, 8, 5]
-    chunks = sliding_window(a, window_size=3, padding=True, padding_el=0)
-
-    result = []
-    for chunk in chunks:
-        blob_sum = 0
-        for el in chunk:
-            blob_sum += el
-        result.append(blob_sum)
-
-    print(result)
-
-    # pdb_id = "1cee"
-    # structure = PDBParser(QUIET=True).get_structure(pdb_id, "../dataset/entities/pdb" + pdb_id +
-    # ".ent")
-    # prova = list(sliding_window(structure[0]["A"], 2))
-    # pprint(prova)

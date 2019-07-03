@@ -100,9 +100,9 @@ class RingFeatures:
                     contacts_intra_long += 1
 
         # Calculate contacts ratio (inter/intra)
-        contacts_ratio = float(contacts_inter / (contacts_intra + 1))
+        contacts_ratio = float(contacts_intra / (contacts_inter + 1))
         # Calculate the ratio of the contacts w.r.t. the energy of each bond
-        contacts_energy_ratio = float(inter_energy / (intra_energy + 1))
+        contacts_energy_ratio = float(intra_energy / (inter_energy + 1))
         return contacts_inter, contacts_intra, contacts_ratio, contacts_intra_long, contacts_inter_sc, contacts_energy_ratio
 
     def get_all_features(self, target_residue_id: int, target_chain: str) -> Dict:

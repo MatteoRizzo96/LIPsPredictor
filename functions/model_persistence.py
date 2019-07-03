@@ -1,6 +1,7 @@
+import os
+
 from joblib import dump, load
 from sklearn.base import BaseEstimator
-import os
 
 
 def dump_clf(clf: BaseEstimator, path: str = 'configuration/', name: str = 'clf') -> None:

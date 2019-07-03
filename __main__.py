@@ -1,17 +1,12 @@
 import logging
 
-from Bio.PDB import is_aa
-from pandas import DataFrame
-from sklearn.utils import shuffle
+from sklearn.metrics import make_scorer, fbeta_score
 
 from classes.Dataset import Dataset
 from classes.EnsembleVotingPredictor import EnsembleVotingPredictor
 from classes.Example import Example
-from classes.FeaturesSelector import FeaturesSelector
 from classes.Initializer import Initializer
 from classes.Preprocessor import Preprocessor
-from sklearn.metrics import fbeta_score, make_scorer
-
 from functions.export_results import export_results
 
 
@@ -46,40 +41,33 @@ def main():
     # ---- DATASET PREPROCESSING ----
 
     # Perform basic preprocessing on features (fill missing and scale values, averaging sliding window)
-    dataset_preprocessor = Preprocessor(dataset.get_features())
-    dataset_preprocessor.apply_features_scaling(dataset.get_features_names())
-    to_be_preprocessed = dataset.get_features_names()
-    to_be_preprocessed.remove("structural_linearity")
-    dataset_preprocessor.apply_sliding_window(to_be_preprocessed,
-                                              data_processing_params["sw_width"])
+    one_hot_encoded = ['sec_struct', 'amino_type']
+    not_to_be_slided = ['chain_len', 'struct_-', 'struct_B',
+                        'struct_S', 'struct_T', 'struct_E',
+                        'struct_H', 'struct_I', 'struct_G']
+
+    dataset_preprocessor = Preprocessor(dataset.get_features(), dataset.get_residues_info())
+    encoders = dataset_preprocessor.apply_one_hot_encoding(one_hot_encoded)
+    dataset_preprocessor.fill_missing_values(exclude=one_hot_encoded)
+    dataset_preprocessor.apply_sliding_window(to_be_excluded=not_to_be_slided,
+                                              k=data_processing_params["sw_width"])
 
     # Update the dataset features post preprocessing
     dataset.update_features(dataset_preprocessor.get_features())
 
-    # Balance the dataset positive and negative examples ratio
-    dataset.balance(dataset_params["balance_ratio"])
+    # Shuffle
+    dataset.shuffle_dataset()
 
-    # ---- DATASET FEATURES SELECTION ----
-
-    # Perform feature analysis and selection
-    feature_selector = FeaturesSelector(dataset)
-    feature_selector.univariate_selection(num_features=data_processing_params["num_features"])
-    feature_selector.features_importance(num_features=data_processing_params["num_features"],
-                                         show=data_processing_params["show_best_features"])
-
-    # Update the dataset features post feature selection
-    dataset.update_features(feature_selector.get_features())
-
-    # ---- PREDICTOR INITIALIZATION ----
+    # Balance
+    # dataset.balance(dataset_params["balance_ratio"])
 
     # Get the final features and labels to perform the training of the models
-    df = dataset.get_dataset()
+    features = list(dataset.get_features().columns)
 
-    # Shuffle the dataset
-    x: DataFrame = shuffle(df)
-    y = x.pop('is_lip')
+    x = dataset.get_features(features)
+    y = dataset.get_labels()
 
-    # x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.25)
+    # ---- PREDICTOR INITIALIZATION ----
 
     scorer = make_scorer(fbeta_score, beta=0.7, pos_label=1)
 
@@ -112,29 +100,26 @@ def main():
     example = Example(pdb_id,
                       dssp_path,
                       use_ring_api=dataset_params["use_ring_api"],
-                      delete_previous_example=session_params["delete_previous_input"])
+                      delete_previous_example=True)
 
     # ---- EXAMPLE PREPROCESSING ----
 
-    # Perform basic preprocessing on the example (fill missing and scale values, averaging sliding
-    # window)
-    example_preprocessor = Preprocessor(example.get_features())
-    example_preprocessor.apply_features_scaling(example.get_features_names())
-    example_preprocessor.apply_sliding_window(to_be_preprocessed,
-                                              data_processing_params["sw_width"])
+    # Perform basic preprocessing on the example
+    example_preprocessor = Preprocessor(example.get_features(), example.get_residues_info())
 
+    example_preprocessor.apply_one_hot_encoding(to_be_encoded=one_hot_encoded, encoders=encoders)
+    example_preprocessor.fill_missing_values()
+    example_preprocessor.apply_sliding_window(to_be_excluded=not_to_be_slided,
+                                              k=data_processing_params["sw_width"])
+    example_preprocessor.fill_missing_values()
     # Update the dataset features post preprocessing
     example.update_features(example_preprocessor.get_features())
-
-    # ---- EXAMPLE FEATURES SELECTION ----
-
-    # Remove all non-best features from the example
-    best_features_labels = feature_selector.get_best_features_ids()
 
     # ---- PREDICTION ----
 
     # Predict results using trained model
-    results = clf.predict_proba(example.get_features(best_features_labels))
+    example_processed = example.get_features(features)
+    results = clf.predict_proba(example_processed)
 
     export_results(results, example.get_structure(), initializer.get_out_dir())
 

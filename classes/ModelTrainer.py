@@ -1,16 +1,16 @@
 import logging
-from typing import List, Dict, Tuple, Callable, Union
+import pprint
 from statistics import mean
+from typing import List, Dict, Tuple, Callable, Union
 
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import PolynomialFeatures, StandardScaler
-from sklearn.model_selection import cross_validate
-from sklearn.svm import SVC
+from sklearn.base import BaseEstimator
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.base import BaseEstimator
-import pprint
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.model_selection import cross_validate
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+from sklearn.svm import SVC
 
 
 class ModelTrainer:

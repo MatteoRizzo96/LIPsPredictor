@@ -1,102 +1,114 @@
-from typing import List
+from typing import List, Dict
 
+import numpy as np
 import pandas as pd
+from pandas import DataFrame
+from scipy.signal.windows import gaussian
+from sklearn.preprocessing import MinMaxScaler, OrdinalEncoder, OneHotEncoder
 
 
 class Preprocessor:
 
-    def __init__(self, features: pd.DataFrame):
+    def __init__(self, features: pd.DataFrame, res_info: pd.DataFrame):
         """
         Build a preprocessing utility and performs the filling of the missing values.
 
         :param features: the whole set of features of the dataset
         """
-
         self.__features = features
-        self.__fill_missing_values()
+        self.__info = res_info
 
     def get_features(self) -> pd.DataFrame:
         return self.__features
 
-    def __fill_missing_values(self):
-        """ Fill missing values with the median value of the feature. """
+    def fill_missing_values(self, exclude: List[str] = []):
+        """
+        Fill missing values with the median value of the feature.
+        :param exclude: list of columns to exclude
+        """
 
-        for feature in self.__features:
-            median = self.__features[feature].median()
-            self.__features[feature].fillna(median, inplace=True)
+        for feature in self.__features.keys():
+            if feature not in exclude:
+                self.__features[feature].fillna(0, inplace=True)
 
-    def apply_features_scaling(self, to_be_preprocessed: List[str]):
+    def apply_one_hot_encoding(self, to_be_encoded: List[str],
+                               encoders: Dict[str, OrdinalEncoder] = dict()) -> Dict[str, OrdinalEncoder]:
+        """
+
+        :param to_be_encoded: list of columns to be encoded
+        :param encoders: dictionary containing for each column the encoder to use
+        :return: the dictionary of encoders fitted for each column
+        """
+        for header in to_be_encoded:
+            df = self.__features[header]
+            df = df.fillna('-')
+            X = np.asarray(df).reshape(-1, 1)
+            if header not in encoders.keys():
+                enc = OneHotEncoder(handle_unknown='ignore')
+                enc.fit(X)
+                encoders[header] = enc
+            else:
+                enc = encoders[header]
+            Y = enc.transform(X).toarray()
+            df = pd.DataFrame(Y, columns=enc.categories_[0].tolist())
+            self.__features = self.__features.drop(columns=[header])
+            self.__features = pd.concat([self.__features, df], axis=1)
+        return encoders
+
+    def apply_features_scaling(self, to_be_encoded: List[str], scaler=None) -> MinMaxScaler:
         """
         Scale each feature within a [0, 1] range.
 
-        :param to_be_preprocessed: the list of features (names) to be scaled
+        :param to_be_encoded: list of header string to be processed
+        :param scaler: the previous scaler used for scaling the features of dataset
         """
+        features_to_scale = self.__features[to_be_encoded]
+        if scaler is None:
+            scaler = MinMaxScaler()
+            scaled_features = scaler.fit_transform(features_to_scale)
+        else:
+            scaled_features = scaler.transform(features_to_scale)
+        self.__features.loc[:, to_be_encoded] = scaled_features
+        return scaler
 
-        # For each axis take the maximum/minimum value and scale each feature value in [0, 1]
-        for feature in self.__features:
-            if feature in to_be_preprocessed:
-                new_entries = []
-
-                min_val = min(self.__features[feature])
-                max_val = max(self.__features[feature])
-
-                assert min_val != max_val, "The feature has the same value for all the rows of dataset!"
-
-                for feature_val in self.__features[feature]:
-                    new_entries.append(self.__map_value(feature_val, min_val, max_val, 0., 1.))
-
-                self.__features[feature] = new_entries
-
-    def apply_encoder(self, to_be_processed: List[str], thresholds: List[float]):
-        for feature in self.__features:
-            if feature in to_be_processed:
-                pass
-
-    @staticmethod
-    def __map_value(value, low1, high1, low2, high2) -> float:
-        """
-        Scale the value in the range low1, high1 to the range low2, high2.
-
-        :param value: value to map
-        :param low1: min value of the mapping
-        :param high1: max value of the mapping
-        :param low2: min value to map to
-        :param high2: max value to map to
-
-        :return: a scale value in the given range
-        """
-
-        return low2 + (high2 - low2) * (value - low1) / (high1 - low1)
-
-    def apply_sliding_window(self, to_be_preprocessed: List[str], width: int = 3):
+    def apply_sliding_window(self, to_be_excluded: List[str], k: int = 3):
         """
         Apply an averaging sliding window of given width to each feature.
 
-        :param to_be_preprocessed:
-        :param width: the left/right width of the sliding window,
+        :param to_be_excluded: list of header to exclude from sliding window
+        :param k: the left/right width of the sliding window,
         note that the total width of the sliding window is 2*width+1
         """
 
-        # Iterate over features names
-        for feature in self.__features:
-            if feature in to_be_preprocessed:
-                # Iterate over features values for a given feature
-                for i in range(len(self.__features[feature])):
+        originals = self.__features[to_be_excluded]
 
-                    # Lower bound of the window
-                    if i < width:
-                        r = range(i, i + width + 1)
-                    # Upper bound of the window
-                    elif len(self.__features[feature]) - 1 - i < width:
-                        r = range(i - width, i)
-                    # Default case
-                    else:
-                        r = range(i - width, i + width + 1)
+        df_merged: DataFrame = pd.concat([self.__info, self.get_features()], axis=1)
+        df_windows = df_merged.copy(deep=True)
+        buff = pd.DataFrame(columns=self.__features.columns)
 
-                    # Calculate the sum of all values in the window
-                    values_sum = 0
-                    for j in r:
-                        values_sum += self.__features[feature][j]
+        for pdb_id in df_merged.pdb_id.unique():
+            for chain in df_merged.chain[df_merged.pdb_id == pdb_id].unique():
+                df_sliced = df_windows[(df_merged.pdb_id == pdb_id)
+                                       & (df_merged.chain == chain)]
+                info_sliced = df_sliced.iloc[:, 0:3]
+                chain_len = len(df_merged.chain[(df_merged.pdb_id == pdb_id)
+                                                & (df_merged.chain == chain)])
+                df_windows_start = pd.DataFrame(np.array(df_sliced.iloc[1:(k // 2 + 1), ]),
+                                                index=np.arange(-k // 2 + 1, 0, step=1),
+                                                columns=list(df_merged.columns)).sort_index()
+                df_windows_end = pd.DataFrame(
+                    np.array(df_sliced.iloc[chain_len - (k // 2 + 1):chain_len - 1, ]),
+                    index=np.arange(chain_len - 1 + k // 2, chain_len - 1, step=-1),
+                    columns=list(df_merged.columns)).sort_index()
 
-                    # Set the current value to the average of the window
-                    self.__features.at[i, feature] = values_sum / (1 + 2 * width)
+                df_with_start_sym = df_windows_start.append(df_sliced)
+                df_win_k = df_with_start_sym.append(df_windows_end)
+
+                sliced = df_win_k.iloc[:, 3:]
+                window = gaussian(k, std=1)
+                sliced = sliced.rolling(window=k, center=True).apply(lambda x: np.dot(x, window) / k,
+                                                                     raw=True)
+                sliced = sliced.iloc[k // 2:chain_len + k // 2, :]
+                buff = buff.append(sliced, ignore_index=True)
+        self.__features = buff
+        self.__features[to_be_excluded] = originals

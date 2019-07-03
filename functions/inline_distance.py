@@ -1,5 +1,3 @@
-from pprint import pprint
-
 import numpy as np
 from Bio.PDB import is_aa, Chain, PDBParser
 

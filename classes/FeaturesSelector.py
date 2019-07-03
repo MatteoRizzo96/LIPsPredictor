@@ -49,9 +49,10 @@ class FeaturesSelector:
         logging.info(feature_scores.nlargest(10, 'Score'))
 
         for feature in self.__features:
-            if feature not in feature_scores.nlargest(num_features, 'Score'):
-                self.__features.drop(feature, axis=1)
+            if not feature_scores.nlargest(num_features, 'Score')['Specs'].str.contains(feature).any():
+                self.__features.drop(feature, axis=1, inplace=True)
             else:
+                logging.warning('Added FEATURE {}'.format(feature))
                 self.__best_features_ids.append(feature)
 
     def features_importance(self, num_features: int, show: bool = False):

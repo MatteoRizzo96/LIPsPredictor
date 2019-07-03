@@ -26,7 +26,6 @@ mtrx/matrices.h
 *.exe
 *.out
 *.app
-mkdssp
 mkhssp
 hsspsoap
 hsspconv

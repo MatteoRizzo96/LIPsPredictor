@@ -1,11 +1,12 @@
-import csv
 import logging
 import os
-from typing import List, Dict
+from typing import List
 
+import numpy as np
 import pandas as pd
-from Bio.PDB import PDBList, is_aa, DSSP, HSExposureCB, Structure
+from Bio.PDB import DSSP, HSExposureCB, PDBList, Structure, is_aa
 from Bio.PDB.PDBParser import PDBParser
+from pandas import DataFrame
 
 from classes.Ring import Ring
 from functions.inline_distance import inline_distance
@@ -36,15 +37,16 @@ class Example:
         self.__pdb_id = pdb_id
         self.__use_ring_api = use_ring_api
 
-        pdbl = PDBList()
-        pdbl.retrieve_pdb_file(pdb_id, pdir=self.__entities_path, file_format='pdb')
-        self.__structure = PDBParser(QUIET=True).get_structure(self.__pdb_id,
-                                                               os.path.join(self.__entities_path,
-                                                                            "pdb{}.ent".format(self.__pdb_id)))
-
         if delete_previous_example or (not delete_previous_example and not os.path.isfile(self.__example_path)):
             # Delete old example data
             self.__clear_example()
+
+            # Initialize structure
+            pdbl = PDBList()
+            pdbl.retrieve_pdb_file(pdb_id, pdir=self.__entities_path, file_format='pdb')
+            self.__structure = PDBParser(QUIET=True).get_structure(self.__pdb_id,
+                                                                   os.path.join(self.__entities_path,
+                                                                                "pdb{}.ent".format(self.__pdb_id)))
 
             # Write examples features
             self.__write_entries(self.__calculate_entries())
@@ -54,6 +56,9 @@ class Example:
                 for item in os.listdir(os.getcwd()):
                     if item.endswith(".zip"):
                         os.remove(os.path.join(os.getcwd(), item))
+
+        # Set residues info
+        self.__residues_info = self.__read_residues_info()
 
         # Set example features
         self.__features = self.__read_features()
@@ -71,7 +76,7 @@ class Example:
         if best_features != "all":
             for feature in self.__features:
                 if feature not in best_features:
-                    self.__features.drop(feature, axis=1)
+                    self.__features.drop(feature, axis=1, inplace=True)
 
         return self.__features
 
@@ -97,9 +102,9 @@ class Example:
         :return: a list of entries data
         """
 
-        # Save dataset proteins to dataset/entities/pdbXXXX.ent files
-        pdbl = PDBList()
-        pdbl.retrieve_pdb_file(self.__pdb_id, pdir=self.__entities_path, file_format='pdb')
+        # # Save dataset proteins to dataset/entities/pdbXXXX.ent files
+        # pdbl = PDBList()
+        # pdbl.retrieve_pdb_file(self.__pdb_id, pdir=self.__entities_path, file_format='pdb')
 
         # Load the structure from the ent file
         structure = self.__structure
@@ -136,7 +141,9 @@ class Example:
             # between the starting residue of LIP and the last one
             distances = inline_distance(chain)
 
-            for residue in [residue for residue in chain if is_aa(residue)]:
+            residues = [residue for residue in chain if is_aa(residue)]
+
+            for residue in residues:
                 # Residue ID structure:
                 #   - hetero flag
                 #   - sequence id
@@ -157,8 +164,28 @@ class Example:
                 exp_down = hse[(chain.id, residue.id)][1] if residue.id[0] == " " and (
                     chain.id, residue.id) in hse.keys() else None
 
+                # Amino type
+                amino_type = dssp_res[1] if dssp_res else '-'
+
                 # Secondary structure
-                secondary_structure = (1 if dssp_res[2] != '-' else 0) if dssp_res else None
+                secondary_structure = dssp_res[2] if dssp_res else '-'
+
+                # Phi and psi
+                phi = dssp_res[4] if dssp_res else None
+                psi = dssp_res[5] if dssp_res else None
+
+                # Energies
+                nho1relidx = dssp_res[6] if dssp_res else None
+                nho1energy = dssp_res[7] if dssp_res else None
+                onh1relidx = dssp_res[8] if dssp_res else None
+                onh1energy = dssp_res[9] if dssp_res else None
+                nho2relidx = dssp_res[10] if dssp_res else None
+                nho2energy = dssp_res[11] if dssp_res else None
+                onh2relidx = dssp_res[12] if dssp_res else None
+                onh2energy = dssp_res[13] if dssp_res else None
+
+                # Chain length
+                chain_len = len(residues)
 
                 # Contacts ratios
                 contacts_ratio = ring_features.get_contacts_ratio(seq_id, chain.id)
@@ -168,6 +195,7 @@ class Example:
                 contacts_inter_sc = ring_features.get_contacts_inter_sc(seq_id, chain.id)
                 contacts_intra_long = ring_features.get_contacts_intra_long(seq_id, chain.id)
                 contacts_intra = ring_features.get_contacts_intra(seq_id, chain.id)
+                contacts_inter = ring_features.get_contacts_inter(seq_id, chain.id)
 
                 contacts.append([contacts_inter_sc, contacts_intra, contacts_intra_long])
 
@@ -179,7 +207,21 @@ class Example:
                                       asa,
                                       secondary_structure,
                                       contacts_ratio,
+                                      contacts_intra,
+                                      contacts_inter,
                                       contacts_energy_ratio,
+                                      amino_type,
+                                      phi,
+                                      psi,
+                                      chain_len,
+                                      nho1relidx,
+                                      nho1energy,
+                                      onh1relidx,
+                                      onh1energy,
+                                      nho2relidx,
+                                      nho2energy,
+                                      onh2relidx,
+                                      onh2energy,
                                       distances[residue]])
 
             # Compute structural linearity (9, 10, 11 are the indexes of relevant values)
@@ -193,24 +235,16 @@ class Example:
 
         return [residue_entry for chain_entries in entries for residue_entry in chain_entries]
 
-    def __read_residues_info(self) -> List[Dict]:
+    def __read_residues_info(self) -> DataFrame:
         """
         Read the info from the dataset.
 
         :return: a list of info as dicts
         """
 
-        info = []
+        logging.info("Reading residues info at {}...".format(self.__example_path))
 
-        with open(self.__example_path) as csv_file:
-            csv_reader = csv.DictReader(csv_file, delimiter=',')
-            for dataset_entry in csv_reader:
-                info.append({"pdb_id": dataset_entry["pdb_id"],
-                             "chain_id": dataset_entry["chain"],
-                             "residue_id": int(dataset_entry["res_seq_id"])
-                             })
-
-        return info
+        return pd.read_csv(self.__example_path, usecols=['pdb_id', 'chain', 'res_seq_id'])
 
     def __read_features(self) -> pd.DataFrame:
         """
@@ -220,28 +254,41 @@ class Example:
         """
 
         # Loading features from dataset.csv
-        features = pd.read_csv(self.__example_path,
-                               usecols=['HSE_up',
-                                        'HSE_down',
-                                        'ASA',
-                                        'sec_struct',
-                                        'contacts_ratio',
-                                        'distance_from_line',
-                                        'contacts_energy_ratio',
-                                        'structural_linearity'])
+        df = pd.read_csv(self.__example_path,
+                         usecols=["HSE_up",
+                                  "HSE_down",
+                                  'ASA',
+                                  'sec_struct',
+                                  'contacts_ratio',
+                                  'contacts_intra',
+                                  'contacts_inter',
+                                  'contacts_energy_ratio',
+                                  'amino_type',
+                                  'phi',
+                                  'psi',
+                                  'chain_len',
+                                  'nho1relidx',
+                                  'nho1energy',
+                                  'onh1relidx',
+                                  'onh1energy',
+                                  'nho2relidx',
+                                  'nho2energy',
+                                  'onh2relidx',
+                                  'onh2energy',
+                                  'distance_from_line',
+                                  'structural_linearity'],
+                         na_values='-')
 
-        return features
+        df['sec_struct'] = df['sec_struct'].replace(np.nan, "struct_-")
+        df['sec_struct'] = df['sec_struct'].replace('B', "struct_B")
+        df['sec_struct'] = df['sec_struct'].replace('S', "struct_S")
+        df['sec_struct'] = df['sec_struct'].replace('T', "struct_T")
+        df['sec_struct'] = df['sec_struct'].replace('E', "struct_E")
+        df['sec_struct'] = df['sec_struct'].replace('H', "struct_H")
+        df['sec_struct'] = df['sec_struct'].replace('I', "struct_I")
+        df['sec_struct'] = df['sec_struct'].replace('G', "struct_G")
 
-    def __read_labels(self) -> List[float]:
-        """
-        Read the labels from the dataset.
-
-        :return: a list of labels
-        """
-
-        with open(self.__example_path) as csv_file:
-            csv_reader = csv.DictReader(csv_file, delimiter=',')
-            return [float(dataset_entry["is_lip"]) for dataset_entry in csv_reader]
+        return df
 
     def __write_entries(self, entries: List[List]):
         """
@@ -264,7 +311,21 @@ class Example:
                                        'ASA',
                                        'sec_struct',
                                        'contacts_ratio',
+                                       'contacts_intra',
+                                       'contacts_inter',
                                        'contacts_energy_ratio',
+                                       'amino_type',
+                                       'phi',
+                                       'psi',
+                                       'chain_len',
+                                       'nho1relidx',
+                                       'nho1energy',
+                                       'onh1relidx',
+                                       'onh1energy',
+                                       'nho2relidx',
+                                       'nho2energy',
+                                       'onh2relidx',
+                                       'onh2energy',
                                        'distance_from_line',
                                        'structural_linearity'])
 
@@ -305,3 +366,6 @@ class Example:
                 except Exception as e:
                     print(e)
             logging.info("Old edges files deleted successfully!")
+
+    def get_residues_info(self) -> DataFrame:
+        return self.__residues_info

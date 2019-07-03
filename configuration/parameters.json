@@ -4,24 +4,21 @@
     "use_ring_api": false,
     "delete_entities": false,
     "delete_edges": false,
-    "balance_ratio": 40
+    "balance_ratio": 10
   },
   "data_processing": {
-    "show_best_features": false,
-    "num_features": 5,
-    "sw_width": 3
+    "sw_width": 5
   },
   "session": {
     "load_clf": true,
     "dump_clf": true,
-    "delete_previous_input": true,
     "svm": false,
     "forest": true,
     "logistic": false
   },
   "forest": {
     "grid": {
-      "n_estimators": [100, 500, 1000],
+      "n_estimators": [70, 100, 120, 500, 1000],
       "max_features": ["auto", "sqrt"],
       "bootstrap": [true, false],
       "criterion": ["gini", "entropy"],
@@ -30,9 +27,9 @@
       "min_samples_split": [2, 5, 10]
     },
     "params": {
-      "n_estimators": 500,
-      "min_samples_split": 5,
-      "min_samples_leaf": 2,
+      "n_estimators": 120,
+      "min_samples_split": 2,
+      "min_samples_leaf": 1,
       "max_features": "auto",
       "max_depth": "None",
       "criterion": "gini",

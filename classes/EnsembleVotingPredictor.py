@@ -143,7 +143,7 @@ class EnsembleVotingPredictor:
 
         return avg
 
-    def predict_proba(self, x: List[List[float]]) -> List[List[float]]:
+    def predict_proba(self, x: Union[List[List[float]], DataFrame]) -> List[List[float]]:
         """
         Return predicted probabilities for provided samples
 
@@ -156,3 +156,6 @@ class EnsembleVotingPredictor:
         assert self.__trained is True, 'Cannot predict with untrained model.'
 
         return self.__predictor.predict_proba(x)
+
+    def predict(self, x: Union[List[List[float]], DataFrame]):
+        return self.__predictor.predict(x)

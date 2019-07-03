@@ -1,11 +1,14 @@
 import csv
 import logging
 import os
-from typing import List, Dict
+from typing import Dict, List
 
+import numpy as np
 import pandas as pd
-from Bio.PDB import PDBList, is_aa, DSSP, Structure, HSExposureCB
+from Bio.PDB import DSSP, HSExposureCB, PDBList, Structure, is_aa
 from Bio.PDB.PDBParser import PDBParser
+from pandas import DataFrame
+from sklearn.utils import shuffle
 
 from classes.Ring import Ring
 from functions.inline_distance import inline_distance
@@ -13,9 +16,10 @@ from functions.structural_linearity import structural_linearity
 
 
 class Dataset:
-
     def __init__(self,
                  dssp_path: str,
+                 specs_file_name: str = "dataset_specifications.csv",
+                 dataset_file_name: str = "dataset.csv",
                  rewrite: bool = True,
                  use_ring_api=False,
                  delete_edges=False,
@@ -33,9 +37,8 @@ class Dataset:
 
         # Initialize paths
         self.__dataset_folder_path = os.path.join(os.getcwd(), "dataset")
-        self.__dataset_specs_path = os.path.join(self.__dataset_folder_path,
-                                                 "dataset_specifications.csv")
-        self.__dataset_path = os.path.join(self.__dataset_folder_path, "dataset.csv")
+        self.__dataset_specs_path = os.path.join(self.__dataset_folder_path, specs_file_name)
+        self.__dataset_path = os.path.join(self.__dataset_folder_path, dataset_file_name)
         self.__entities_path = os.path.join(self.__dataset_folder_path, "entities")
         self.__edges_path = os.path.join(self.__dataset_folder_path, "edges")
         self.__dssp_path = dssp_path
@@ -44,6 +47,10 @@ class Dataset:
 
         # Initialize parameters
         self.__use_ring_api = use_ring_api
+
+        if dataset_file_name == "test_set.csv" and not os.path.isfile(
+                os.path.join(self.__dataset_folder_path, "test_set_specifications.csv")):
+            self.__reorganize_test_set_specs()
 
         if rewrite or (not rewrite and not os.path.isfile(self.__dataset_path)):
             logging.info("Generating dataset...")
@@ -61,10 +68,27 @@ class Dataset:
         # Initialize the labels
         self.__labels = self.__read_labels()
 
-    def get_residues_info(self) -> List[Dict]:
+    def get_residues_info(self) -> DataFrame:
         return self.__residues_info
 
-    def get_features(self) -> pd.DataFrame:
+    def shuffle_dataset(self):
+        df = shuffle(self.get_dataset())
+        self.__labels = list(df.pop('is_lip'))
+        self.__features = df
+
+    def get_features(self, best_features: List[str] = "all") -> pd.DataFrame:
+        """
+        Return all the best features of the dataset.
+
+        :param best_features: some selected features obtain via features selection
+        :return: a DataFrame of features
+        """
+
+        if best_features != "all":
+            for feature in self.__features:
+                if feature not in best_features:
+                    self.__features.drop(feature, axis=1, inplace=True)
+
         return self.__features
 
     def get_features_names(self) -> List[str]:
@@ -137,6 +161,55 @@ class Dataset:
 
         logging.info("Dataset balanced successfully!")
 
+    def __reorganize_test_set_specs(self):
+
+        logging.info("Reorganizing test set specifications...")
+
+        entries = []
+
+        with open(self.__dataset_specs_path) as csv_file:
+            csv_reader = csv.DictReader(csv_file, delimiter=',')
+            pdbl = PDBList()
+
+            for dataset_specs_entry in csv_reader:
+
+                pdb_id = dataset_specs_entry["pdb"]
+                target_chain = dataset_specs_entry["chain"]
+                start = "neg" if dataset_specs_entry["start"] == "#" else int(dataset_specs_entry["start"])
+                end = "neg" if dataset_specs_entry["start"] == "#" else int(dataset_specs_entry["end"])
+
+                if start != "neg":
+                    pdbl.retrieve_pdb_file(pdb_id, pdir=self.__entities_path, file_format='pdb')
+
+                    # Load the structure from the ent file
+                    structure = PDBParser(QUIET=True).get_structure(pdb_id,
+                                                                    os.path.join(self.__entities_path,
+                                                                                 "pdb{}.ent".format(pdb_id)))
+                    # Initialize a model
+                    model = structure[0]
+
+                    # Initialize the list of amino acids filtering hetero groups
+                    residues = [residue for residue in model[target_chain] if is_aa(residue)]
+
+                    # Initialize the start of the LIP residues sequence
+                    _, seq_id_start, _ = residues[start - 1].id
+                    start = seq_id_start
+
+                    # Initialize the end of the LIP residues sequence
+                    _, seq_id_end, _ = residues[end - 1].id
+                    end = seq_id_end
+
+                entries.append([
+                    pdb_id,
+                    target_chain,
+                    start,
+                    end
+                ])
+
+            df = pd.DataFrame(entries, columns=["pdb", "chain", "start", "end"])
+            df.to_csv(os.path.join(self.__dataset_folder_path, "test_set_specifications.csv"), header=True)
+            self.__dataset_specs_path = os.path.join(self.__dataset_folder_path, "test_set_specifications.csv")
+
     def __build_dataset(self):
         """
         Generate a new dataset in dataset/dataset.csv from
@@ -184,19 +257,50 @@ class Dataset:
         dataset_specs = []
 
         with open(self.__dataset_specs_path) as csv_file:
-            csv_reader = csv.DictReader(csv_file, delimiter=',')
-            for dataset_specs_entry in csv_reader:
-                dataset_specs.append({"pdb": dataset_specs_entry["pdb"],
-                                      "chain": dataset_specs_entry["chain"],
-                                      "start": int(dataset_specs_entry["start"])
-                                      if dataset_specs_entry["start"] != "neg" else None,
-                                      "end": int(dataset_specs_entry["end"])
-                                      if dataset_specs_entry["end"] != "neg" else None,
-                                      "type": dataset_specs_entry["type"]
-                                      })
+
+            csv_reader = list(csv.DictReader(csv_file, delimiter=','))
+            i = 0
+
+            while i < len(csv_reader):
+
+                # Get the current row
+                dataset_specs_entry = csv_reader[i]
+
+                # Get the current row id formed by  pbd_id + chain_id
+                dataset_specs_id = dataset_specs_entry["pdb"] + dataset_specs_entry["chain"]
+                current_id = dataset_specs_id
+
+                # Initialize a list of LIP ranges
+                ranges = []
+
+                # While the same chain is being considered
+                while current_id == dataset_specs_id:
+
+                    # Append the current LIP range to the list
+                    ranges.append({
+                        "start": int(csv_reader[i]["start"])
+                        if csv_reader[i]["start"] != "neg" and csv_reader[i]["start"] != "#" else None,
+                        "end": int(csv_reader[i]["end"])
+                        if csv_reader[i]["start"] != "neg" and csv_reader[i]["start"] != "#" else None
+                    })
+
+                    # Increment the index and calculate the next id
+                    i += 1
+
+                    if i < len(csv_reader):
+                        current_id = csv_reader[i]["pdb"] + csv_reader[i]["chain"]
+                    else:
+                        break
+
+                dataset_specs.append({
+                    "pdb": dataset_specs_entry["pdb"],
+                    "chain": dataset_specs_entry["chain"],
+                    "ranges": ranges
+                })
+
         return dataset_specs
 
-    def __read_residues_info(self) -> List[Dict]:
+    def __read_residues_info(self) -> DataFrame:
         """
         Read the info from the dataset.
 
@@ -205,17 +309,7 @@ class Dataset:
 
         logging.info("Reading residues info at {}...".format(self.__dataset_path))
 
-        info = []
-
-        with open(self.__dataset_path) as csv_file:
-            csv_reader = csv.DictReader(csv_file, delimiter=',')
-            for dataset_entry in csv_reader:
-                info.append({"pdb_id": dataset_entry["pdb_id"],
-                             "chain_id": dataset_entry["chain"],
-                             "residue_id": int(dataset_entry["res_seq_id"])
-                             })
-
-        return info
+        return pd.read_csv(self.__dataset_path, usecols=['pdb_id', 'chain', 'res_seq_id'])
 
     def __read_features(self) -> pd.DataFrame:
         """
@@ -227,15 +321,41 @@ class Dataset:
         logging.info("Reading features at {}...".format(self.__dataset_path))
 
         # Loading features from dataset.csv
-        return pd.read_csv(self.__dataset_path,
-                           usecols=["HSE_up",
-                                    "ASA",
-                                    "HSE_down",
-                                    "sec_struct",
-                                    "contacts_ratio",
-                                    "distance_from_line",
-                                    "contacts_energy_ratio",
-                                    "structural_linearity"])
+        df = pd.read_csv(self.__dataset_path,
+                         usecols=['HSE_up',
+                                  'HSE_down',
+                                  'ASA',
+                                  'sec_struct',
+                                  'contacts_ratio',
+                                  'contacts_intra',
+                                  'contacts_inter',
+                                  'contacts_energy_ratio',
+                                  'amino_type',
+                                  'phi',
+                                  'psi',
+                                  'chain_len',
+                                  'nho1relidx',
+                                  'nho1energy',
+                                  'onh1relidx',
+                                  'onh1energy',
+                                  'nho2relidx',
+                                  'nho2energy',
+                                  'onh2relidx',
+                                  'onh2energy',
+                                  'distance_from_line',
+                                  'structural_linearity'],
+                         na_values='-')
+
+        df['sec_struct'] = df['sec_struct'].replace(np.nan, "struct_-")
+        df['sec_struct'] = df['sec_struct'].replace('B', "struct_B")
+        df['sec_struct'] = df['sec_struct'].replace('S', "struct_S")
+        df['sec_struct'] = df['sec_struct'].replace('T', "struct_T")
+        df['sec_struct'] = df['sec_struct'].replace('E', "struct_E")
+        df['sec_struct'] = df['sec_struct'].replace('H', "struct_H")
+        df['sec_struct'] = df['sec_struct'].replace('I', "struct_I")
+        df['sec_struct'] = df['sec_struct'].replace('G', "struct_G")
+
+        return df
 
     def __read_labels(self) -> List[float]:
         """
@@ -273,10 +393,25 @@ class Dataset:
                                        'ASA',
                                        'sec_struct',
                                        'contacts_ratio',
+                                       'contacts_intra',
+                                       'contacts_inter',
                                        'contacts_energy_ratio',
+                                       'amino_type',
+                                       'phi',
+                                       'psi',
+                                       'chain_len',
+                                       'nho1relidx',
+                                       'nho1energy',
+                                       'onh1relidx',
+                                       'onh1energy',
+                                       'nho2relidx',
+                                       'nho2energy',
+                                       'onh2relidx',
+                                       'onh2energy',
                                        'distance_from_line',
                                        'structural_linearity',
                                        'is_lip'])
+
             df.to_csv(self.__dataset_path, header=True)
 
     def __calculate_entries_data(self, structure: Structure, specs: Dict) -> List:
@@ -295,18 +430,19 @@ class Dataset:
         # Get the specs data from the current specs
         pdb_id = specs["pdb"]
         target_chain = specs["chain"]
-        start = specs["start"]
-        end = specs["end"]
+        ranges = specs["ranges"]
+        no_lip = True if ranges[0]["start"] is None else False
 
-        if start is not None:
-            logging.info("Searching residues from {start} to {end} in chain {chain}"
-                         .format(start=start,
-                                 end=end,
-                                 chain=target_chain))
-        else:
-            logging.info("Extracting features from {id}, chain {chain} where no LIPs are present"
+        if no_lip:
+            logging.info("Extracting features from {id} chain {chain}, where no LIPs are present"
                          .format(id=pdb_id,
                                  chain=target_chain))
+        else:
+            for r in ranges:
+                logging.info("Searching LIP residues from {start} to {end} in chain {chain}"
+                             .format(start=r["start"],
+                                     end=r["end"],
+                                     chain=target_chain))
 
         # Create an empty entries list
         entries = []
@@ -336,9 +472,10 @@ class Dataset:
             "Getting the Inline Distance feature for protein {} chain {}".format(pdb_id, target_chain))
         distances = inline_distance(model[target_chain])
 
-        # Iterate over residues of the target chain filtering the hetero groups
-        # (returns only amino acids)
-        for residue in [residue for residue in model[target_chain] if is_aa(residue)]:
+        residues = [residue for residue in model[target_chain] if is_aa(residue)]
+
+        # Iterate over residues of the target chain filtering the hetero groups (returns only amino acids)
+        for residue in residues:
             # Residue ID structure:
             #   - hetero flag
             #   - sequence id
@@ -359,8 +496,28 @@ class Dataset:
             exp_down = hse[(target_chain, residue.id)][1] if residue.id[0] == " " and (
                 target_chain, residue.id) in hse.keys() else None
 
+            # Amino type
+            amino_type = dssp_res[1] if dssp_res else '-'
+
             # Secondary structure
-            secondary_structure = (1 if dssp_res[2] != '-' else 0) if dssp_res else None
+            secondary_structure = dssp_res[2] if dssp_res else '-'
+
+            # Phi and psi
+            phi = dssp_res[4] if dssp_res else None
+            psi = dssp_res[5] if dssp_res else None
+
+            # Energies
+            nho1relidx = dssp_res[6] if dssp_res else None
+            nho1energy = dssp_res[7] if dssp_res else None
+            onh1relidx = dssp_res[8] if dssp_res else None
+            onh1energy = dssp_res[9] if dssp_res else None
+            nho2relidx = dssp_res[10] if dssp_res else None
+            nho2energy = dssp_res[11] if dssp_res else None
+            onh2relidx = dssp_res[12] if dssp_res else None
+            onh2energy = dssp_res[13] if dssp_res else None
+
+            # Chain length
+            chain_len = len(residues)
 
             # Contacts ratios
             contacts_ratio = ring_features.get_contacts_ratio(seq_id, target_chain)
@@ -370,11 +527,25 @@ class Dataset:
             contacts_inter_sc = ring_features.get_contacts_inter_sc(seq_id, target_chain)
             contacts_intra_long = ring_features.get_contacts_intra_long(seq_id, target_chain)
             contacts_intra = ring_features.get_contacts_intra(seq_id, target_chain)
+            contacts_inter = ring_features.get_contacts_inter(seq_id, target_chain)
 
             contacts.append([contacts_inter_sc, contacts_intra, contacts_intra_long])
 
             # Calculate the label
-            is_lip = 1 if start is not None and start <= seq_id <= end else 0
+            is_lip = 0
+
+            # If the residue can be LIP because some range has been calculated for the current chain
+            if not no_lip:
+
+                # The index spans the ranges
+                idx = 0
+
+                # While there are ranges to be checked
+                while is_lip == 0 and idx < len(ranges):
+                    if ranges[idx]["start"] <= seq_id <= ranges[idx]["end"]:
+                        is_lip = 1
+                    else:
+                        idx += 1
 
             entries.append([pdb_id,
                             target_chain,
@@ -384,14 +555,28 @@ class Dataset:
                             asa,
                             secondary_structure,
                             contacts_ratio,
+                            contacts_intra,
+                            contacts_inter,
                             contacts_energy_ratio,
+                            amino_type,
+                            phi,
+                            psi,
+                            chain_len,
+                            nho1relidx,
+                            nho1energy,
+                            onh1relidx,
+                            onh1energy,
+                            nho2relidx,
+                            nho2energy,
+                            onh2relidx,
+                            onh2energy,
                             distances[residue],
                             is_lip])
 
         # Compute structural linearity (0, 1, 2 tell the positions of required values)
         struct_lin = structural_linearity(contacts, 0, 1, 2)
 
-        # Append struct lin as second-last element of each entry
+        # Append structural linearity as second-last element of each entry
         for entry, sl in zip(entries, struct_lin):
             entry.insert(-1, sl)
 
@@ -401,7 +586,7 @@ class Dataset:
 
     def __clear_dataset(self):
         """
-        Delete alla data concerning the previous dataset,
+        Delete all data concerning the previous dataset,
         possibly including entities and edges files.
         """
 
