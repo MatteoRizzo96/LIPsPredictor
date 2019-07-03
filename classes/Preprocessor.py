@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame
 from scipy.signal.windows import gaussian
-from sklearn.preprocessing import MinMaxScaler, OrdinalEncoder, OneHotEncoder
+from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
 
 
 class Preprocessor:
@@ -32,7 +32,7 @@ class Preprocessor:
                 self.__features[feature].fillna(0, inplace=True)
 
     def apply_one_hot_encoding(self, to_be_encoded: List[str],
-                               encoders: Dict[str, OrdinalEncoder] = dict()) -> Dict[str, OrdinalEncoder]:
+                               encoders: Dict[str, OneHotEncoder] = dict()) -> Dict[str, OneHotEncoder]:
         """
 
         :param to_be_encoded: list of columns to be encoded
