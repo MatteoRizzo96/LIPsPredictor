@@ -92,7 +92,7 @@ def main():
             # Save to file if required
             clf.dump()
 
-    clf.evaluate(k_fold=8)
+    # clf.evaluate(k_fold=8)
 
     # ---- EXAMPLE INITIALIZATION ----
 
