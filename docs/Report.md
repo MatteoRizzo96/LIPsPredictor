@@ -90,6 +90,7 @@ The packages to be installed in order for the LIPs predictor to run properly are
 | typing      | <https://docs.python.org/3/library/typing.html> |
 | tabulate    | <https://pypi.org/project/tabulate/>            |
 | joblib      | <https://joblib.readthedocs.io/en/latest/>      |
+| scipy       | https://www.scipy.org/                          |
 
 Furthermore, the LIPs predictor makes use of two main external libraries:
 
@@ -136,7 +137,21 @@ The dataset is stored in ```/dataset/dataset.csv``` and is conceptually divided 
 | ```ASA```                   | Float    | Accessible Surface Area (ASA).                               |
 | ```sec_struct```            | Float    | Secondary structure presence.                                |
 | ```contacts_ratio```        | Float    | Contacts ratio: inter chain divided by intra chain contacts (+1). |
+| ```contacts_intra```        | Float    | Number of intra-chain contacts .                             |
+| ```contacts_inter```        | Float    | Number of inter-chain contacts.                              |
 | ```contacts_energy_ratio``` | Float    | Contacts ratio calculated with the energy of the bond: sum of inter chain energy bonds divided by intra chain energy bonds (+1). |
+| ```amino_type```            | String   | Type of the amino acid.                                      |
+| ```phi```                   | Float    | Phi angle value of the residue.                              |
+| ```psi```                   | Float    | Psi angle value of the residue.                              |
+| ```chain_len```             | Int      | Length of the chain which the residue belongs to.            |
+| ```noh1relidx```            | Float    | NH --> O_1_relidx                                            |
+| ```noh1energy```            | Float    | NH --> O_1_energy                                            |
+| ```onh1relidx```            | Float    | O --> NH_1_relidx                                            |
+| ```onh1energy```            | Float    | O --> NH_1_energy                                            |
+| ```noh2relidx```            | Float    | NH --> O_2_relidx                                            |
+| ```noh2energy```            | Float    | NH --> O_2_energy                                            |
+| ```onh2relidx```            | Float    | O --> NH_2_relidx                                            |
+| ```onh2energy```            | Float    | O --> NH_2_energy                                            |
 | ```distance_from_line```    | Float    | Distance from a line conjuncting the first and the last residue of a part of the chain multiplied by window of increasing length. This window is increased only if the last residue is not too far from the line drawn without it. |
 | ```structural_linearity```  | Float    | Ratio of contacts computed with the formula: <br />inter_sc / (intra + intra_long * 4) . |
 
@@ -173,8 +188,9 @@ Logistic regression is an algorithm used in the task of regression, which is the
 The LIPs predictor preprocesses both the dataset and the input example by:
 
 1. Filling missing values with the median of the feature;
-2. Scaling the features in range [0,1];
-3. Applying a sliding window of configurable width.
+2. Applying One Hot Encoding to categorical features; 
+3. Scaling the features in range [0,1];
+4. Applying a sliding window of configurable width.
 
 #### Balancing
 
@@ -340,7 +356,7 @@ The LIPs predictor may use up to three models, all implemented via [sklearn](htt
 - A [Random Forest](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html);
 - A [Logistic Regression](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html).
 
-The predictions of each model are then combined together using ensemble learning.
+The predictions of each model can be combined together using ensemble learning.
 
 In order to retrain the models, you first need to set the required parameters in the ```configuration/parameters.json``` file (please refer to [Parameters configuration](#parameters-configuration) for more information about the parameters to be configured).
 
@@ -512,6 +528,18 @@ get_features(self) -> pd.DataFrame
 
 Returns the preprocessed features.
 
+##### Missing values filling
+
+```python
+fill_missing_values(self, exclude: List[str] = [])
+```
+
+Fills all missing or none values with 0.
+
+| **Parameter** | **Type**  | **Description**                                              |
+| ------------- | --------- | ------------------------------------------------------------ |
+| ```exlcude``` | List[str] | A list of features to be excluded from the filling procedure. |
+
 ##### Features scaling
 
 ```python
@@ -523,6 +551,19 @@ Scales the features named in to_be_preprocessed in a [0,1] range.
 | **Parameter**            | **Type**  | **Description**                           |
 | ------------------------ | --------- | ----------------------------------------- |
 | ```to_be_preprocessed``` | List[str] | The set of features (names) to be scaled. |
+
+##### One hot encoding
+
+```python
+apply_one_hot_encoding(self, to_be_encoded: List[str], encoders: Dict[str, OneHotEncoder]) -> Dict[str, OneHotEncoder]
+```
+
+Applies the One Hot Encoding to the given list of features and returns a list of encoders.
+
+| **Parameter**       | **Type**                 | **Description**                                              |
+| ------------------- | ------------------------ | ------------------------------------------------------------ |
+| ```to_be_encoded``` | List[str]                | The set of features (names) to be encoded.                   |
+| ```encoders```      | Dict[str, OneHotEncoder] | A dictionary associating each feature with its encoder. If not empty, the given encoders will be utilized. |
 
 ##### Sliding window
 
@@ -793,28 +834,46 @@ Returns the ```DSSP``` structure of the example.
 update_features(self, features: pd.DataFrame)
 ```
 
-Given some```DataFrame``` of features, set this ```DataFrame``` as the new set of features.
+Given some ```DataFrame``` of features, set this ```DataFrame``` as the new set of features.
 
 | **Parameter**  | **Type**     | **Description**                          |
 | -------------- | ------------ | ---------------------------------------- |
 | ```features``` | pd.DataFrame | The new set of features for the dataset. |
 
-## **Observations and results**
+## **Observations and results **(update 03/07/2019)
+
+After the test on a totally unknown dataset we observed bad results in terms of metrics. The main reason for this behavior of the software was a wrong formatting of the output file, and a wrong parsing of the input file which didn't consider the possibility that the same chain had more than one LIP sequence. However, while looking for the error, we also implemented some new features:
+
+* More DSSP features, which did not show high correlation (but we left them anyway). Some of these features were categorical, so we also had to implement a One Hot Encoding procedure;
+* The *chain length* which yielded substantially better results, probably because LIP sequences are mainly found in short chains.
+
+We also removed the balancing procedure from the pipeline since it did not result in relevant improvements.
 
 The final tests on the models give the following values for the key metrics:
 
 ```json
 {
-    'avg_accuracy': 0.9336888524592505,
-    'avg_f1': 0.916490279785851,
-    'avg_f_beta': 0.9191963994488284,
-    'avg_precision': 0.924623511999477,
-    'avg_recall': 0.9090272125203492
+    'avg_accuracy': 0.9894342481108667,
+    'avg_f1': 0.9488543565955384,
+    'avg_f_beta': 0.9476331390385154,
+    'avg_precision': 0.945387436948619,
+    'avg_recall': 0.9526370800651176
 }
 ```
 
-This results have been achieved by shuffling the dataset and balancing the percentage of positive/negative examples. However, we noted how the model perform well in training and test, but may output many false positives and some false negatives (even orienting the models towards precision).
+The following images provide some examples of predicted LIP sequences. Note that red regions are the predicted true positives. 
 
-For example, as it can be seen in the picture below, the sequence of LIP residues (i.e. red+green regions) is mostly identified correctly by the predictor (i.e. green region), while there are some false negatives (i.e. red region).
+For many proteins, it seems like many LIP regions have a specular non LIP counter part, and we noticed that the model tends to predict both of them as LIP, since they share similar features. Unfortunately, the precision of the model is quite impacted by this. The blue region in 1f95 is an example of specular non LIP sequence predicted as LIP by the model.
 
-![1h8b protein](1h8b-small.png)
+### 1f95 
+
+![1f95](1f95.png)
+
+### 1h8b 
+
+![1h8b](/home/matteo/Github/LIPsPredictor/docs/1h8b.png)
+
+### 4yoz 
+
+![4yoz](/home/matteo/Github/LIPsPredictor/docs/4yoz.png)
+
