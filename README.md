@@ -1,10 +1,8 @@
 # LIPsPredictor
 
-A software for the identification of LIPs in PDB structures.
+A Python software for the identification of LIPs in PDB structures.
 
-___
-
-Project report for the Structural Bioinformatics course AY 2018/2019. The assignment requires to identify Linear Interacting Peptides (LIPs) in PDB structures.
+This software was developed for the Structural Bioinformatics course AY 2018/2019 at University of Padua (Italy). The assignment requires to identify Linear Interacting Peptides (LIPs) in PDB structures.
 
 ## **Table of contents**
 <!-- TOC depthFrom:1 depthTo:4 withLinks:1 updateOnSave:1 orderedList:0 -->
